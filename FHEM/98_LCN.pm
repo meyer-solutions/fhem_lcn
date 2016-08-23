@@ -81,18 +81,19 @@ sub
 LCN_Ready($)
 {
   my ($hash) = @_;
-  return DevIo_OpenDev($hash, 1, "Test_DoInit");
+  return DevIo_OpenDev($hash, 1, "LCN_DoInit");
 }
 
 #####################################
 sub
 LCN_Set($@)
 {
-  my ($hash, @a) = @_;
+  my ($hash, $name, @aa) = @_;
 
+  my @a = ($name);
+  push @a, @aa;
   my $ret = undef;
   my $na = int(@a);
-  my $name = $a[0];	
 
   return "Need one to three parameter" if(@a < 2);
   #return "Unknown argument $a[1], choose one of " . join(" ", sort keys %sets)
@@ -103,10 +104,14 @@ LCN_Set($@)
 
   #my ($fn, $arg) = split(" ", $sets{$a[1]});
 
-	my $fn = $a[1];
-    my $group = AttrVal($name, "lcngroup", "");
+      my $fn = $a[1];
+      my $group = AttrVal($name, "lcngroup", "");
+      my @ext = ("blink","on-for-timer","on-till","off-for-timer","off-till");
 
 	if (defined $fn and $fn ne "?") {
+	Log3 $name, 2, "LCN Set ".$fn;
+	my( $index )= grep { $ext[$_] eq $fn } 0..$#ext;
+	if (!defined $index) {
 		my $value = $a[2];	
 		my $segment = $hash->{segment};
 		my $module = $hash->{module};
@@ -114,8 +119,12 @@ LCN_Set($@)
 		$delay = $a[3] if ($na > 2);
 		$delay = $value if ($na < 4);	
 	    my $command = $fn;
-		
-		if ($fn eq "add") {
+
+		if ($fn eq "pct") {
+		  $value = $delay;
+	          $delay = 0;
+		} elsif 
+		    ($fn eq "add") {
 			$command = "Free";
 			$value = sprintf("GD+%03d",$value);
 		} elsif ($fn eq "remove") {
@@ -131,7 +140,7 @@ LCN_Set($@)
 		     $value = 0;
 		    } elsif (!($fn =~ /(Free|Key)/)) {
 		      $value = $fn;
-	            }
+		   }
 			if (!defined $delay) {
 			  $delay = 0;
 			}		
@@ -141,11 +150,13 @@ LCN_Set($@)
 	 	my $r1 = IOWrite($hash, "$command", "$command $segment $module ".$hash->{cmd}.$hash->{chnl}." $value $delay $group");			
 	
 		return undef;
+	} else {
 	}
+    }
 
-    my $list = "off:noArg on:noArg toggle:noArg statusRequest:noArg add remove";
+    my $list = "off:noArg on:noArg toggle:noArg statusRequest:noArg add remove blink on-for-timer on-till off-for-timer off-till";
     $list .= " state:slider,0,1,100 pct:slider,0,1,100 ";
-    return SetExtensions($hash, $list, $name, @a);
+    return SetExtensions($hash, $list, $name, @aa);
   
 }
 
@@ -201,7 +212,8 @@ LCN_DoInit($$$)
 
   # Reset the counter
   my $hash = $defs{$name};
-  $hash->{STATE} = "Initialized";
+  readingsSingleUpdate($hash, "state", "Initialized", 1);
+
   return undef;
 }
 
@@ -222,7 +234,7 @@ LCN_Define($$)
   my $type = $a[2];
   my $host 	= $a[3];
   
-  $hash->{STATE} = "defined";
+  $hash->{STATE} = "000";
   if ($type eq "linhk") {
 	$hash->{PARTIAL} = "";
     Log3 $name, 3, "LCN opening device $host:4114";
@@ -348,8 +360,7 @@ LCN_Parse($$)
           my $lh = $def->{$n};
           $n = $lh->{NAME};        
 		  return "" if(IsIgnored($n));   # Little strange.
-		  
-  		  readingsSingleUpdate($lh, "temp", ($value/10)-100, 1);
+		  readingsSingleUpdate($lh, "temp", ($value/10)-100, 1);
 		  push(@list, $n);
 	    }
 		return @list;
@@ -431,12 +442,16 @@ LCN_Write($$$)
     Log3 $name, 2, "LCN Write ".$msg;
     # ex: Test_Write A1, A1 000 024 0,
 
-    $msg =~ /(\S) (\d{1,3}) (\d{1,3}) (..) (.*)/;
+    $msg =~ /(\S) (\d{1,3}) (\d{1,3}) (.{2,3}) (.*)/;
 
     my $output = $4;
     my $segment = $2;
     my $module = $3;
     my ($v2, $duration, $group) = split(" ", $5);
+
+    if ($v2 eq "RL") {
+      $v2 = "A1";
+    }
 
   	my $sendString;
   
@@ -478,6 +493,7 @@ LCN_Read($)
   my ($hash) = @_;
 
   my $buffer = DevIo_SimpleRead($hash);
+  $buffer = "" unless $buffer;
   my $iohash = $modules{$hash->{TYPE}}; # Our (FHZ) module pointer
   my $name = $hash->{NAME};
 
