@@ -13,7 +13,7 @@ use DevIo;
 
 sub LCN_Write($$$);
 sub LCN_Read($);
-sub LCN_DoInit($$$);
+sub LCN_DoInit($$);
 
 my $msgstart = pack('H*', "81");# Every msg starts with this
 
@@ -71,7 +71,7 @@ LCN_Initialize($)
   $hash->{GetFn}   = "LCN_Get";
   $hash->{SetFn}   = "LCN_Set";
   $hash->{AttrList}= "IODev level do_not_notify:1,0 dummy:1,0 " .
-                   "showtime:1,0 lcnmodel:linhk lcngroup subType model ".
+                   "showtime:1,0 lcnmodel:linhk lcngroup subType model username password ".
                	   $readingFnAttributes;
 }
 
@@ -205,13 +205,18 @@ LCN_Get($@)
 
 #####################################
 sub
-LCN_DoInit($$$)
+LCN_DoInit($$)
 {
-  my ($name,$type,$po) = @_;
-  my @init;
 
-  # Reset the counter
-  my $hash = $defs{$name};
+    my ($hash, $msg) = @_;
+    my $name = $hash->{NAME};
+
+    Log3 $name, 3, "LCN: xx $name, $hash";
+
+    if ($msg) {
+        Log3 $name, 3, "$name: Open callback: $msg" if ($msg);
+    }
+
   readingsSingleUpdate($hash, "state", "Initialized", 1);
 
   return undef;
@@ -511,10 +516,18 @@ LCN_Read($)
   
 		
 	if ($rmsg =~ /Username/) {
-	    DevIo_SimpleWrite($hash, "guest\n", 0);
+        Log3 $name, 3, "LCN: asked for $rmsg, $hash";
+	    my $user = AttrVal($name,'username', 'linhk');
+	    DevIo_SimpleWrite($hash, "$user\n", 0);
 	}
 	if ($rmsg =~ /Password/) {
-	  DevIo_SimpleWrite($hash, "+3uf3l\n", 0);
+	    Log3 $name, 3, "LCN: asked for $rmsg";
+	    my $password = AttrVal($name,'password', undef);
+	    if (defined($password)) {
+	       DevIo_SimpleWrite($hash, "$password\n", 0);
+	    } else {
+	       DevIo_SimpleWrite($hash, "\n", 0);
+	    }
 	}	
 	
 	if ($rmsg =~ /:M(\d\d\d)(\d\d\d)(A|Bx|Rx)(\d)(\d*)/) {
